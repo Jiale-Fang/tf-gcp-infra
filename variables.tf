@@ -28,19 +28,22 @@ variable "webapp_route_dest_range" {
   description = "Destination range for the webapp route"
 }
 
-variable "application_ports" {
-  type        = list(number)
-  description = "List of application ports to allow"
+variable "firewall" {
+  description = "The rule of firewall"
+  type = object({
+    allow_rule_protocol      = string
+    deny_rule_protocol       = string
+    allow_rule_ports         = list(number)
+    allow_rule_priority      = number
+    deny_rule_priority       = number
+    allow_rule_source_ranges = list(string)
+    deny_rule_source_ranges  = list(string)
+  })
 }
 
-variable "firewall_protocol" {
+variable "vm_machine_type" {
+  description = "The machine type of the vm"
   type        = string
-  description = "The IP protocol used to create a firewall rule"
-}
-
-variable "firewall_source_ranges" {
-  type        = list(string)
-  description = "Firewall will apply only to traffic that has source IP address in these ranges"
 }
 
 variable "vm_boot_disk_params" {
