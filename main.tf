@@ -90,7 +90,7 @@ resource "google_compute_instance" "vm_instance" {
 
     sudo cat <<EOT > /opt/csye6225_repo/startup.sh
     #!/bin/bash
-    DB_HOST="${var.psc_addrs[count.index * 2]}"
+    DB_HOST="${var.psc_addrs[count.index]}"
     DB_USER="webapp"
     DB_PASSWORD=${random_password.mysql_password.result}
     java -jar /opt/csye6225_repo/Health_Check-0.0.1-SNAPSHOT.jar --spring.datasource.username=\$DB_USER \
