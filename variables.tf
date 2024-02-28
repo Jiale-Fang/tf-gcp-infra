@@ -1,3 +1,8 @@
+variable "project_id" {
+  type        = string
+  description = "Google Project Id"
+}
+
 variable "region" {
   type        = string
   description = "Resources Region"
@@ -21,6 +26,11 @@ variable "vpc_routing_mode" {
 variable "ip_cidr_ranges" {
   type        = list(string)
   description = "IP cidr ranges"
+}
+
+variable "psc_addrs" {
+  type        = list(string)
+  description = "Private Service Connect's IP"
 }
 
 variable "webapp_route_dest_range" {
@@ -53,4 +63,28 @@ variable "vm_boot_disk_params" {
     size  = number
     type  = string
   })
+}
+
+variable "database_instance_config" {
+  description = "Configuration for the database instance"
+  type = object({
+    database_version    = string
+    deletion_protection = bool
+    settings = object({
+      tier = string
+      backup_configuration = object({
+        enabled            = bool
+        binary_log_enabled = bool
+      })
+      availability_type = string
+      disk_type         = string
+      disk_size         = number
+      edition           = string
+    })
+  })
+}
+
+variable "db_username" {
+  type        = string
+  description = "GCP Cloud SQL username"
 }

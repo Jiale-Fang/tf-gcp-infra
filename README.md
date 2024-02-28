@@ -3,3 +3,4 @@ Terraform template
 
 GCP Api need to be enabled:
 - Compute Engine API
+- Service Networking API
