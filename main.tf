@@ -88,17 +88,17 @@ resource "google_compute_instance" "vm_instance" {
     sudo yum update -y
     echo "y" | sudo yum install -y mysql
 
-    sudo cat <<EOT > /usr/local/csye6225_repo/startup.sh
+    sudo cat <<EOT > /opt/csye6225_repo/startup.sh
     #!/bin/bash
     DB_HOST="${var.psc_addrs[count.index * 2]}"
     DB_USER="webapp"
     DB_PASSWORD=${random_password.mysql_password.result}
-    java -jar /usr/local/csye6225_repo/Health_Check-0.0.1-SNAPSHOT.jar --spring.datasource.username=\$DB_USER \
+    java -jar /opt/csye6225_repo/Health_Check-0.0.1-SNAPSHOT.jar --spring.datasource.username=\$DB_USER \
     --spring.datasource.password=\$DB_PASSWORD \
     --spring.datasource.url="jdbc:mysql://\$DB_HOST:3306/health_check?useUnicode=true&characterEncoding=utf-8&serverTimezone=America/New_York&createDatabaseIfNotExist=true" 
     EOT
     
-    sudo chmod +x /usr/local/csye6225_repo/startup.sh
+    sudo chmod +x /opt/csye6225_repo/startup.sh
     sudo systemctl daemon-reload
     sudo systemctl start csye6225
   EOF
