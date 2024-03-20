@@ -3,6 +3,14 @@ variable "project_id" {
   description = "Google Project Id"
 }
 
+variable "service_account" {
+  description = "Custom service account"
+  type = object({
+    account_id   = string
+    display_name = string
+  })
+}
+
 variable "region" {
   type        = string
   description = "Resources Region"
@@ -11,6 +19,11 @@ variable "region" {
 variable "zone" {
   type        = string
   description = "Resources Zone"
+}
+
+variable "dns_zone" {
+  type        = string
+  description = "Existing DNS zone"
 }
 
 variable "vpc_count" {
