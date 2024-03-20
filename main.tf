@@ -4,6 +4,12 @@ provider "google" {
   region  = var.region
 }
 
+# Create Service account
+resource "google_service_account" "custom_service_account" {
+  account_id   = var.service_account.account_id
+  display_name = var.service_account.display_name
+}
+
 resource "random_string" "name_suffix" {
   length  = 6
   special = false
@@ -52,7 +58,7 @@ resource "google_compute_firewall" "vpc_firewall_webapp_allow_rule" {
   target_tags   = ["webapp-${count.index + 1}-${random_string.name_suffix.result}"]
 }
 
-// Explicit to deny all another rule as required
+# Explicit to deny all another rule as required
 resource "google_compute_firewall" "vpc_firewall_deny_rule" {
   count    = var.vpc_count
   name     = "vpc-firewall-deny-rule-${count.index + 1}-${random_string.name_suffix.result}"
@@ -83,6 +89,10 @@ resource "google_compute_instance" "vm_instance" {
     subnetwork = google_compute_subnetwork.webapp_subnet[count.index].id
     access_config {}
   }
+  service_account {
+    email  = google_service_account.custom_service_account.email
+    scopes = ["cloud-platform"]
+  }
   metadata_startup_script = <<-EOF
     #!/bin/bash
     sudo yum update -y
@@ -93,13 +103,14 @@ resource "google_compute_instance" "vm_instance" {
     DB_HOST="${var.psc_addrs[count.index]}"
     DB_USER="webapp"
     DB_PASSWORD=${random_password.mysql_password.result}
-    java -jar /opt/csye6225_repo/Health_Check-0.0.1-SNAPSHOT.jar --spring.datasource.username=\$DB_USER \
+    java -Dlogback.log.path="/var/log" -jar /opt/csye6225_repo/Health_Check-0.0.1-SNAPSHOT.jar --spring.datasource.username=\$DB_USER \
     --spring.datasource.password=\$DB_PASSWORD \
     --spring.datasource.url="jdbc:mysql://\$DB_HOST:3306/health_check?useUnicode=true&characterEncoding=utf-8&serverTimezone=America/New_York&createDatabaseIfNotExist=true" 
     EOT
     
     sudo chmod +x /opt/csye6225_repo/startup.sh
     sudo systemctl daemon-reload
+    sudo systemctl enable csye6225
     sudo systemctl start csye6225
   EOF
   depends_on              = [google_sql_database_instance.db_instance]
@@ -173,4 +184,40 @@ resource "google_sql_user" "db_user" {
 resource "random_password" "mysql_password" {
   length  = 16
   special = false
+}
+
+# fetching already created DNS zone
+data "google_dns_managed_zone" "dns_zone" {
+  name = var.dns_zone
+}
+
+# to register web-server's ip address in DNS
+resource "google_dns_record_set" "dns_a_record" {
+  name         = data.google_dns_managed_zone.dns_zone.dns_name
+  managed_zone = data.google_dns_managed_zone.dns_zone.name
+  type         = "A"
+  ttl          = 300
+  rrdatas = [
+    google_compute_instance.vm_instance[0].network_interface[0].access_config[0].nat_ip
+  ]
+  depends_on = [google_compute_instance.vm_instance[0]]
+}
+
+# Bind IAM Roles to the Service Account
+resource "google_project_iam_binding" "logging_admin" {
+  project = var.project_id
+  role    = "roles/logging.admin"
+
+  members = [
+    "serviceAccount:${google_service_account.custom_service_account.email}",
+  ]
+}
+
+resource "google_project_iam_binding" "monitoring_metric_writer" {
+  project = var.project_id
+  role    = "roles/monitoring.metricWriter"
+
+  members = [
+    "serviceAccount:${google_service_account.custom_service_account.email}",
+  ]
 }
