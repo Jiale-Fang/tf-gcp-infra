@@ -3,6 +3,11 @@ variable "project_id" {
   description = "Google Project Id"
 }
 
+variable "mailgun_api_key" {
+  type        = string
+  description = "The email api key of the mailgun"
+}
+
 variable "service_account" {
   description = "Custom service account"
   type = object({
@@ -26,11 +31,6 @@ variable "dns_zone" {
   description = "Existing DNS zone"
 }
 
-variable "vpc_count" {
-  type        = number
-  description = "The count of the vpcs"
-}
-
 variable "vpc_routing_mode" {
   type        = string
   description = "The routing mode of the vpcs"
@@ -39,11 +39,6 @@ variable "vpc_routing_mode" {
 variable "ip_cidr_ranges" {
   type        = list(string)
   description = "IP cidr ranges"
-}
-
-variable "psc_addrs" {
-  type        = list(string)
-  description = "Private Service Connect's IP"
 }
 
 variable "webapp_route_dest_range" {
@@ -100,4 +95,37 @@ variable "database_instance_config" {
 variable "db_username" {
   type        = string
   description = "GCP Cloud SQL username"
+}
+
+variable "topic" {
+  description = "The topic of pub/sub"
+  type = object({
+    name                       = string
+    message_retention_duration = string
+  })
+}
+
+variable "cloud_function" {
+  description = "Cloud function trigger by pub/sub"
+  type = object({
+    description                   = string
+    runtime                       = string
+    available_memory_mb           = number
+    timeout                       = number
+    entry_point                   = string
+    min_instances                 = number
+    max_instances                 = number
+    ingress_settings              = string
+    vpc_connector_egress_settings = string
+  })
+}
+
+variable "vpc_connector" {
+  description = "Vpc serverless connector"
+  type = object({
+    ip_cidr_range = string
+    machine_type  = string
+    min_instances = number
+    max_instances = number
+  })
 }
