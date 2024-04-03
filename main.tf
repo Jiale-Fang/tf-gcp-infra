@@ -66,47 +66,6 @@ resource "google_compute_firewall" "vpc_firewall_deny_rule" {
   target_tags   = ["webapp-${random_string.name_suffix.result}"]
 }
 
-resource "google_compute_instance" "vm_instance" {
-  name         = "vm-instance-${random_string.name_suffix.result}"
-  machine_type = var.vm_machine_type
-  zone         = var.zone
-  tags         = ["webapp-${random_string.name_suffix.result}"]
-  boot_disk {
-    initialize_params {
-      image = var.vm_boot_disk_params.image
-      size  = var.vm_boot_disk_params.size
-      type  = var.vm_boot_disk_params.type
-    }
-  }
-  network_interface {
-    network    = google_compute_network.vpc_network.id
-    subnetwork = google_compute_subnetwork.webapp_subnet.id
-    access_config {}
-  }
-  service_account {
-    email  = google_service_account.custom_service_account.email
-    scopes = ["cloud-platform"]
-  }
-  metadata_startup_script = <<-EOF
-    #!/bin/bash
-    sudo cat <<EOT > /opt/csye6225_repo/startup.sh
-    #!/bin/bash
-    DB_HOST="${google_sql_database_instance.db_instance.private_ip_address}"
-    DB_USER="webapp"
-    DB_PASSWORD=${random_password.mysql_password.result}
-    java -Dlogback.log.path="/var/log" -jar /opt/csye6225_repo/Health_Check-0.0.1-SNAPSHOT.jar --spring.datasource.username=\$DB_USER \
-    --spring.datasource.password=\$DB_PASSWORD \
-    --spring.datasource.url="jdbc:mysql://\$DB_HOST:3306/health_check?useUnicode=true&characterEncoding=utf-8&serverTimezone=America/New_York&createDatabaseIfNotExist=true" 
-    EOT
-
-    sudo chmod +x /opt/csye6225_repo/startup.sh
-    sudo systemctl daemon-reload
-    sudo systemctl enable csye6225
-    sudo systemctl start csye6225
-  EOF
-  depends_on              = [google_sql_database_instance.db_instance]
-}
-
 resource "google_compute_global_address" "private_ip_address" {
   name          = "private-ip-address"
   purpose       = "VPC_PEERING"
@@ -177,9 +136,9 @@ resource "google_dns_record_set" "dns_a_record" {
   type         = "A"
   ttl          = 300
   rrdatas = [
-    google_compute_instance.vm_instance.network_interface[0].access_config[0].nat_ip
+    module.gce-lb-http.external_ip
   ]
-  depends_on = [google_compute_instance.vm_instance]
+  depends_on = [module.gce-lb-http]
 }
 
 # Bind IAM Roles to the Service Account
@@ -269,4 +228,163 @@ resource "google_vpc_access_connector" "vpc_connector" {
   min_instances = var.vpc_connector.min_instances
   max_instances = var.vpc_connector.max_instances
   region        = var.region
+}
+
+// Should allow traffic from Google Front End (GFE): https://cloud.google.com/load-balancing/docs/https
+resource "google_compute_firewall" "health_check_allow_rule" {
+  name          = "health-check-allow-rule"
+  direction     = "INGRESS"
+  network       = "global/networks/default"
+  priority      = 999
+  source_ranges = ["130.211.0.0/22", "35.191.0.0/16"]
+  target_tags   = ["allow-health-check"]
+  allow {
+    ports    = ["8080"]
+    protocol = "tcp"
+  }
+}
+
+resource "google_compute_region_instance_template" "instance_template" {
+  name_prefix = "instance-template-"
+  description = "This template is used to create app server instances."
+
+  tags = ["webapp-${random_string.name_suffix.result}", "allow-health-check"]
+
+  instance_description = "Webapp instance"
+  machine_type         = var.vm_machine_type
+  can_ip_forward       = false
+
+  scheduling {
+    automatic_restart = true
+  }
+
+  // Create a new boot disk from an image
+  disk {
+    source_image = "projects/csye-6225-413815/global/images/${var.vm_boot_disk_params.image}"
+    auto_delete  = true
+    boot         = true
+    disk_type    = var.vm_boot_disk_params.type
+    disk_size_gb = var.vm_boot_disk_params.size
+  }
+
+  network_interface {
+    network    = google_compute_network.vpc_network.id
+    subnetwork = google_compute_subnetwork.webapp_subnet.id
+  }
+
+  lifecycle {
+    create_before_destroy = true
+  }
+
+  metadata_startup_script = <<-EOF
+    #!/bin/bash
+    sudo cat <<EOT > /opt/csye6225_repo/startup.sh
+    #!/bin/bash
+    DB_HOST="${google_sql_database_instance.db_instance.private_ip_address}"
+    DB_USER="webapp"
+    DB_PASSWORD=${random_password.mysql_password.result}
+    java -Dlogback.log.path="/var/log" -jar /opt/csye6225_repo/Health_Check-0.0.1-SNAPSHOT.jar --spring.datasource.username=\$DB_USER \
+    --spring.datasource.password=\$DB_PASSWORD \
+    --spring.datasource.url="jdbc:mysql://\$DB_HOST:3306/health_check?useUnicode=true&characterEncoding=utf-8&serverTimezone=America/New_York&createDatabaseIfNotExist=true" 
+    EOT
+
+    sudo chmod +x /opt/csye6225_repo/startup.sh
+    sudo systemctl daemon-reload
+    sudo systemctl enable csye6225
+    sudo systemctl start csye6225
+  EOF
+  depends_on              = [google_sql_database_instance.db_instance]
+
+  service_account {
+    email  = google_service_account.custom_service_account.email
+    scopes = ["cloud-platform"]
+  }
+}
+
+resource "google_compute_region_instance_group_manager" "instance_group_manager" {
+  name                             = "instance-group-manager"
+  base_instance_name               = "webapp"
+  region                           = var.region
+  distribution_policy_zones        = var.instance_az
+  distribution_policy_target_shape = "EVEN"
+
+  version {
+    instance_template = google_compute_region_instance_template.instance_template.self_link
+  }
+
+  named_port {
+    name = "webapp-port"
+    port = 8080
+  }
+
+  target_size = "1"
+}
+
+resource "google_compute_region_autoscaler" "region-autoscaler" {
+  name   = "region-autoscaler"
+  region = var.region
+  target = google_compute_region_instance_group_manager.instance_group_manager.id
+
+  autoscaling_policy {
+    max_replicas    = var.autoscaling_policy.max_replicas
+    min_replicas    = var.autoscaling_policy.min_replicas
+    cooldown_period = var.autoscaling_policy.cooldown_period
+
+    cpu_utilization {
+      target = var.autoscaling_policy.cpu_utilization.target
+    }
+  }
+}
+
+module "gce-lb-http" {
+  source  = "GoogleCloudPlatform/lb-http/google"
+  version = "~> 9.0"
+
+  project                         = var.project_id
+  name                            = "group-http-lb"
+  target_tags                     = ["lb-fw-allow-rule"]
+  network                         = google_compute_network.vpc_network.id
+  create_address                  = true
+  ssl                             = true
+  managed_ssl_certificate_domains = ["jialefang.site"]
+  http_forward                    = false
+
+  backends = {
+    default = {
+      port                            = var.backend_service.port
+      protocol                        = var.backend_service.protocol
+      port_name                       = var.backend_service.port_name
+      timeout_sec                     = var.backend_service.timeout_sec
+      enable_cdn                      = var.backend_service.enable_cdn
+      connection_draining_timeout_sec = var.backend_service.connection_draining_timeout_sec
+      locality_lb_policy              = var.backend_service.locality_lb_policy
+
+      health_check = {
+        request_path        = var.health_check.request_path
+        port                = var.health_check.port
+        check_interval_sec  = var.health_check.check_interval_sec
+        timeout_sec         = var.health_check.timeout_sec
+        healthy_threshold   = var.health_check.healthy_threshold
+        unhealthy_threshold = var.health_check.unhealthy_threshold
+        logging             = var.health_check.logging
+      }
+
+      log_config = {
+        enable      = true
+        sample_rate = 1.0
+      }
+
+      groups = [
+        {
+          # Each node pool instance group should be added to the backend.
+          group          = google_compute_region_instance_group_manager.instance_group_manager.instance_group,
+          balancing_mode = "UTILIZATION"
+        },
+      ]
+
+      iap_config = {
+        enable = false
+      }
+    }
+  }
 }

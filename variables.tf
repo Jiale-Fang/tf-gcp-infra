@@ -31,6 +31,11 @@ variable "dns_zone" {
   description = "Existing DNS zone"
 }
 
+variable "instance_az" {
+  type        = list(string)
+  description = "The availale zones policy for managed instance group"
+}
+
 variable "vpc_routing_mode" {
   type        = string
   description = "The routing mode of the vpcs"
@@ -127,5 +132,43 @@ variable "vpc_connector" {
     machine_type  = string
     min_instances = number
     max_instances = number
+  })
+}
+
+variable "autoscaling_policy" {
+  description = "Auto scailing policy for autoscaler"
+  type = object({
+    max_replicas    = number
+    min_replicas    = number
+    cooldown_period = number
+    cpu_utilization = object({
+      target = number
+    })
+  })
+}
+
+variable "backend_service" {
+  description = "Backend service for lb"
+  type = object({
+    port                            = string
+    protocol                        = string
+    port_name                       = string
+    timeout_sec                     = number
+    enable_cdn                      = bool
+    connection_draining_timeout_sec = number
+    locality_lb_policy              = string
+  })
+}
+
+variable "health_check" {
+  description = "Health Check endpoint"
+  type = object({
+    request_path        = string
+    port                = string
+    check_interval_sec  = number
+    timeout_sec         = number
+    healthy_threshold   = number
+    unhealthy_threshold = number
+    logging             = bool
   })
 }
