@@ -9,7 +9,15 @@ variable "mailgun_api_key" {
 }
 
 variable "service_account" {
-  description = "Custom service account"
+  description = "Service account used by compute engine"
+  type = object({
+    account_id   = string
+    display_name = string
+  })
+}
+
+variable "cloud_function_service_account" {
+  description = "Service account used by cloud function"
   type = object({
     account_id   = string
     display_name = string

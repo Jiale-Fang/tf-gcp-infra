@@ -12,3 +12,5 @@ GCP Api need to be enabled:
 - Eventarc API
 - Cloud Run Admin API
 - Serverless VPC Access API
+- Cloud Key Management Service (KMS) API
+- Cloud SQL Admin
